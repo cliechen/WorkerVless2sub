@@ -39,6 +39,125 @@ let httpsPorts = ["2053", "2083", "2087", "2096", "8443"];
 let 有效时间 = 7;
 let 更新时间 = 3;
 let MamaJustKilledAMan = ['telegram', 'twitter', 'miaoko'];
+
+function splitLines(text) {
+	return text.includes('\r\n') ? text.split('\r\n') : text.split('\n');
+}
+
+function bytesToHex(uint8Array) {
+	return Array.from(uint8Array).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function parseAddress(addressStr, portGuessArray, defaultPort) {
+	let port = "-1";
+	let address = addressStr;
+	let addressid = addressStr;
+
+	const match = addressid.match(regex);
+	if (!match) {
+		if (address.includes(':') && address.includes('#')) {
+			const parts = address.split(':');
+			address = parts[0];
+			const subParts = parts[1].split('#');
+			port = subParts[0];
+			addressid = subParts[1];
+		} else if (address.includes(':')) {
+			const parts = address.split(':');
+			address = parts[0];
+			port = parts[1];
+		} else if (address.includes('#')) {
+			const parts = address.split('#');
+			address = parts[0];
+			addressid = parts[1];
+		}
+
+		if (addressid.includes(':')) {
+			addressid = addressid.split(':')[0];
+		}
+	} else {
+		address = match[1];
+		port = match[2] || port;
+		addressid = match[3] || address;
+	}
+
+	if (!isValidIPv4(address) && port == "-1" && portGuessArray) {
+		for (let p of portGuessArray) {
+			if (address.includes(p)) {
+				port = p;
+				break;
+			}
+		}
+	}
+	if (port == "-1") port = defaultPort;
+	return { address, port, addressid };
+}
+
+function resolveProxyIP(addressid, address, { socks5Data, 匹配PROXYIP, proxyIPs, proxyIPPool }) {
+	let lowerAddressid = addressid.toLowerCase();
+	let foundProxyIP = null;
+
+	if (socks5Data) {
+		const socks5 = getRandomProxyByMatch(lowerAddressid, socks5Data);
+		return `/${socks5}`;
+	}
+
+	for (let item of 匹配PROXYIP) {
+		if (item.includes('#') && item.split('#')[1] && lowerAddressid.includes(item.split('#')[1].toLowerCase())) {
+			foundProxyIP = item.split('#')[0];
+			break;
+		} else if (item.includes(':') && item.split(':')[1] && lowerAddressid.includes(item.split(':')[1].toLowerCase())) {
+			foundProxyIP = item.split(':')[0];
+			break;
+		}
+	}
+
+	if (proxyIPPool) {
+		const matchingProxyIP = proxyIPPool.find(proxyIP => proxyIP.includes(address));
+		if (matchingProxyIP) {
+			return atob('L3Byb3h5aXA9') + matchingProxyIP;
+		}
+	}
+
+	if (foundProxyIP) {
+		return atob('L3Byb3h5aXA9') + foundProxyIP;
+	}
+
+	const randomProxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
+	return atob('L3Byb3h5aXA9') + randomProxyIP;
+}
+
+async function handleRedirectOrNginx(env, request) {
+	const envKey = env.URL302 ? 'URL302' : (env.URL ? 'URL' : null);
+	if (!envKey) return null;
+	const URLs = await 整理(env[envKey]);
+	if (URLs.includes('nginx')) {
+		return new Response(await nginx(), {
+			headers: {
+				'Content-Type': 'text/html; charset=UTF-8',
+			},
+		});
+	}
+	const URL = URLs[Math.floor(Math.random() * URLs.length)];
+	return envKey === 'URL302' ? Response.redirect(URL, 302) : fetch(new Request(URL, request));
+}
+
+async function fetchWithTimeout(urls, headers, timeoutMs = 2000) {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => {
+		controller.abort();
+	}, timeoutMs);
+
+	try {
+		const responses = await Promise.allSettled(urls.map(apiUrl => fetch(apiUrl, {
+			method: 'get',
+			headers,
+			signal: controller.signal
+		}).then(response => response.ok ? response.text() : Promise.reject())));
+		return responses;
+	} finally {
+		clearTimeout(timeout);
+	}
+}
 let proxyIPPool = [];
 let socks5Data;
 let alpn = '';
@@ -51,30 +170,14 @@ async function 整理优选列表(api) {
 
 	let newapi = "";
 
-	// 创建一个AbortController对象，用于控制fetch请求的取消
-	const controller = new AbortController();
-
-	const timeout = setTimeout(() => {
-		controller.abort(); // 取消所有请求
-	}, 2000); // 2秒后触发
-
 	try {
-		// 使用Promise.allSettled等待所有API请求完成，无论成功或失败
-		// 对api数组进行遍历，对每个API地址发起fetch请求
-		const responses = await Promise.allSettled(api.map(apiUrl => fetch(apiUrl, {
-			method: 'get',
-			headers: {
-				'Accept': 'text/html,application/xhtml+xml,application/xml;',
-				'User-Agent': FileName + atob('IChodHRwczovL2dpdGh1Yi5jb20vY21saXUvV29ya2VyVmxlc3Myc3ViKQ==')
-			},
-			signal: controller.signal // 将AbortController的信号量添加到fetch请求中，以便于需要时可以取消请求
-		}).then(response => response.ok ? response.text() : Promise.reject())));
+		const responses = await fetchWithTimeout(api, {
+			'Accept': 'text/html,application/xhtml+xml,application/xml;',
+			'User-Agent': FileName + atob('IChodHRwczovL2dpdGh1Yi5jb20vY21saXUvV29ya2VyVmxlc3Myc3ViKQ==')
+		});
 
-		// 遍历所有响应
 		for (const [index, response] of responses.entries()) {
-			// 检查响应状态是否为'fulfilled'，即请求成功完成
 			if (response.status === 'fulfilled') {
-				// 获取响应的内容
 				const content = await response.value;
 
 				const lines = content.split(/\r?\n/);
@@ -119,9 +222,6 @@ async function 整理优选列表(api) {
 		}
 	} catch (error) {
 		console.error(error);
-	} finally {
-		// 无论成功或失败，最后都清除设置的超时定时器
-		clearTimeout(timeout);
 	}
 
 	const newAddressesapi = await 整理(newapi);
@@ -279,12 +379,7 @@ async function nginx() {
 }
 
 function surge(content, url, path) {
-	let 每行内容;
-	if (content.includes('\r\n')) {
-		每行内容 = content.split('\r\n');
-	} else {
-		每行内容 = content.split('\n');
-	}
+	let 每行内容 = splitLines(content);
 
 	let 输出内容 = "";
 	for (let x of 每行内容) {
@@ -328,12 +423,10 @@ async function MD5MD5(text) {
 	const encoder = new TextEncoder();
 
 	const firstPass = await crypto.subtle.digest('MD5', encoder.encode(text));
-	const firstPassArray = Array.from(new Uint8Array(firstPass));
-	const firstHex = firstPassArray.map(b => b.toString(16).padStart(2, '0')).join('');
+	const firstHex = bytesToHex(new Uint8Array(firstPass));
 
 	const secondPass = await crypto.subtle.digest('MD5', encoder.encode(firstHex.slice(7, 27)));
-	const secondPassArray = Array.from(new Uint8Array(secondPass));
-	const secondHex = secondPassArray.map(b => b.toString(16).padStart(2, '0')).join('');
+	const secondHex = bytesToHex(new Uint8Array(secondPass));
 
 	return secondHex.toLowerCase();
 }
@@ -368,8 +461,7 @@ function 生成动态UUID(密钥) {
 	function 生成UUID(基础字符串) {
 		const 哈希缓冲区 = new TextEncoder().encode(基础字符串);
 		return crypto.subtle.digest('SHA-256', 哈希缓冲区).then((哈希) => {
-			const 哈希数组 = Array.from(new Uint8Array(哈希));
-			const 十六进制哈希 = 哈希数组.map(b => b.toString(16).padStart(2, '0')).join('');
+			const 十六进制哈希 = bytesToHex(new Uint8Array(哈希));
 			return `${十六进制哈希.substr(0, 8)}-${十六进制哈希.substr(8, 4)}-4${十六进制哈希.substr(13, 3)}-${(parseInt(十六进制哈希.substr(16, 2), 16) & 0x3f | 0x80).toString(16)}${十六进制哈希.substr(18, 2)}-${十六进制哈希.substr(20, 12)}`;
 		});
 	}
@@ -405,55 +497,38 @@ async function getLink(重新汇总所有链接) {
 			const decoder = new TextDecoder('utf-8');
 			return decoder.decode(bytes);
 		}
-		const controller = new AbortController(); // 创建一个AbortController实例，用于取消请求
-
-		const timeout = setTimeout(() => {
-			controller.abort(); // 2秒后取消所有请求
-		}, 2000);
 
 		try {
-			// 使用Promise.allSettled等待所有API请求完成，无论成功或失败
-			const responses = await Promise.allSettled(订阅链接.map(apiUrl => fetch(apiUrl, {
-				method: 'get',
-				headers: {
-					'Accept': 'text/html,application/xhtml+xml,application/xml;',
-					'User-Agent': 'v2rayN/' + FileName + ' (https://github.com/cmliu/WorkerVless2sub)'
-				},
-				signal: controller.signal // 将AbortController的信号量添加到fetch请求中
-			}).then(response => response.ok ? response.text() : Promise.reject())));
+			const responses = await fetchWithTimeout(订阅链接, {
+				'Accept': 'text/html,application/xhtml+xml,application/xml;',
+				'User-Agent': 'v2rayN/' + FileName + ' (https://github.com/cmliu/WorkerVless2sub)'
+			});
 
-			// 遍历所有响应
 			const modifiedResponses = responses.map((response, index) => {
-				// 检查是否请求成功
 				return {
 					status: response.status,
 					value: response.status === 'fulfilled' ? response.value : null,
-					apiUrl: 订阅链接[index] // 将原始的apiUrl添加到返回对象中
+					apiUrl: 订阅链接[index]
 				};
 			});
 
-			console.log(modifiedResponses); // 输出修改后的响应数组
+			console.log(modifiedResponses);
 
 			for (const response of modifiedResponses) {
-				// 检查响应状态是否为'fulfilled'
 				if (response.status === 'fulfilled') {
-					const content = await response.value || 'null'; // 获取响应的内容
+					const content = await response.value || 'null';
 					if (content.includes('://')) {
-						const lines = content.includes('\r\n') ? content.split('\r\n') : content.split('\n');
-						节点LINK = 节点LINK.concat(lines);
+						节点LINK = 节点LINK.concat(splitLines(content));
 					} else {
 						const 尝试base64解码内容 = base64Decode(content);
 						if (尝试base64解码内容.includes('://')) {
-							const lines = 尝试base64解码内容.includes('\r\n') ? 尝试base64解码内容.split('\r\n') : 尝试base64解码内容.split('\n');
-							节点LINK = 节点LINK.concat(lines);
+							节点LINK = 节点LINK.concat(splitLines(尝试base64解码内容));
 						}
 					}
 				}
 			}
 		} catch (error) {
-			console.error(error); // 捕获并输出错误信息
-		} finally {
-			clearTimeout(timeout); // 清除定时器
+			console.error(error);
 		}
 	}
 
@@ -991,11 +1066,7 @@ export default {
 			try {
 				const response = await fetch(socks5DataURL);
 				const socks5DataText = await response.text();
-				if (socks5DataText.includes('\r\n')) {
-					socks5Data = socks5DataText.split('\r\n').filter(line => line.trim() !== '');
-				} else {
-					socks5Data = socks5DataText.split('\n').filter(line => line.trim() !== '');
-				}
+				socks5Data = splitLines(socks5DataText).filter(line => line.trim() !== '');
 			} catch {
 				socks5Data = null;
 			}
@@ -1083,19 +1154,8 @@ export default {
 			}
 
 			if (!url.pathname.includes("/sub")) {
-				const envKey = env.URL302 ? 'URL302' : (env.URL ? 'URL' : null);
-				if (envKey) {
-					const URLs = await 整理(env[envKey]);
-					if (URLs.includes('nginx')) {
-						return new Response(await nginx(), {
-							headers: {
-								'Content-Type': 'text/html; charset=UTF-8',
-							},
-						});
-					}
-					const URL = URLs[Math.floor(Math.random() * URLs.length)];
-					return envKey === 'URL302' ? Response.redirect(URL, 302) : fetch(new Request(URL, request));
-				}
+				const redirectResponse = await handleRedirectOrNginx(env, request);
+				if (redirectResponse) return redirectResponse;
 				return await subHtml(request);
 			}
 
@@ -1144,19 +1204,8 @@ export default {
 		const isSubConverterRequest = request.headers.get('subconverter-request') || request.headers.get('subconverter-version') || userAgent.includes('subconverter');
 		if (isSubConverterRequest) alpn = '';
 		if (!isSubConverterRequest && MamaJustKilledAMan.some(PutAGunAgainstHisHeadPulledMyTriggerNowHesDead => userAgent.includes(PutAGunAgainstHisHeadPulledMyTriggerNowHesDead)) && MamaJustKilledAMan.length > 0) {
-			const envKey = env.URL302 ? 'URL302' : (env.URL ? 'URL' : null);
-			if (envKey) {
-				const URLs = await 整理(env[envKey]);
-				if (URLs.includes('nginx')) {
-					return new Response(await nginx(), {
-						headers: {
-							'Content-Type': 'text/html; charset=UTF-8',
-						},
-					});
-				}
-				const URL = URLs[Math.floor(Math.random() * URLs.length)];
-				return envKey === 'URL302' ? Response.redirect(URL, 302) : fetch(new Request(URL, request));
-			}
+			const redirectResponse = await handleRedirectOrNginx(env, request);
+			if (redirectResponse) return redirectResponse;
 			return await subHtml(request);
 		} else if ((userAgent.includes('clash') || userAgent.includes('meta') || userAgent.includes('mihomo') || (format === 'clash' && !isSubConverterRequest)) && !userAgent.includes('nekobox') && !userAgent.includes('cf-workers-sub')) {
 			subConverterUrl = `${subProtocol}://${subConverter}/sub?target=clash&url=${encodeURIComponent(subConverterUrl)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=${scv}&fdn=false&sort=false&new_name=true`;
@@ -1204,79 +1253,15 @@ export default {
 				const newAddressesnotlscsv = await 整理测速结果('FALSE');
 				const uniqueAddressesnotls = Array.from(new Set(addressesnotls.concat(newAddressesnotlsapi, newAddressesnotlscsv).filter(item => item && item.trim())));
 
-				notlsresponseBody = uniqueAddressesnotls.map(address => {
-					let port = "-1";
-					let addressid = address;
-
-					const match = addressid.match(regex);
-					if (!match) {
-						if (address.includes(':') && address.includes('#')) {
-							const parts = address.split(':');
-							address = parts[0];
-							const subParts = parts[1].split('#');
-							port = subParts[0];
-							addressid = subParts[1];
-						} else if (address.includes(':')) {
-							const parts = address.split(':');
-							address = parts[0];
-							port = parts[1];
-						} else if (address.includes('#')) {
-							const parts = address.split('#');
-							address = parts[0];
-							addressid = parts[1];
-						}
-
-						if (addressid.includes(':')) {
-							addressid = addressid.split(':')[0];
-						}
-					} else {
-						address = match[1];
-						port = match[2] || port;
-						addressid = match[3] || address;
-					}
-
+				notlsresponseBody = uniqueAddressesnotls.map(addressStr => {
 					const httpPorts = ["8080", "8880", "2052", "2082", "2086", "2095"];
-					if (!isValidIPv4(address) && port == "-1") {
-						for (let httpPort of httpPorts) {
-							if (address.includes(httpPort)) {
-								port = httpPort;
-								break;
-							}
-						}
-					}
-					if (port == "-1") port = "80";
-					//console.log(address, port, addressid);
+					const parsed = parseAddress(addressStr, httpPorts, "80");
+					let address = parsed.address;
+					let port = parsed.port;
+					let addressid = parsed.addressid;
 
 					if (隧道版本作者.trim() === atob('Y21saXU=') && 获取代理IP.trim() === 'true') {
-						// 将addressid转换为小写
-						let lowerAddressid = addressid.toLowerCase();
-						// 初始化找到的proxyIP为null
-						let foundProxyIP = null;
-
-						if (socks5Data) {
-							const socks5 = getRandomProxyByMatch(lowerAddressid, socks5Data);
-							path = `/${socks5}`;
-						} else {
-							// 遍历匹配PROXYIP数组查找匹配项
-							for (let item of 匹配PROXYIP) {
-								if (item.includes('#') && item.split('#')[1] && lowerAddressid.includes(item.split('#')[1].toLowerCase())) {
-									foundProxyIP = item.split('#')[0];
-									break; // 找到匹配项，跳出循环
-								} else if (item.includes(':') && item.split(':')[1] && lowerAddressid.includes(item.split(':')[1].toLowerCase())) {
-									foundProxyIP = item.split(':')[0];
-									break; // 找到匹配项，跳出循环
-								}
-							}
-
-							if (foundProxyIP) {
-								// 如果找到匹配的proxyIP，赋值给path
-								path = atob('L3Byb3h5aXA9') + foundProxyIP;
-							} else {
-								// 如果没有找到匹配项，随机选择一个proxyIP
-								const randomProxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
-								path = atob('L3Byb3h5aXA9') + randomProxyIP;
-							}
-						}
+						path = resolveProxyIP(addressid, address, { socks5Data, 匹配PROXYIP, proxyIPs });
 					}
 
 					if (协议类型 == 'VMess') {
@@ -1290,82 +1275,14 @@ export default {
 				}).join('\n');
 			}
 
-			const responseBody = uniqueAddresses.map(address => {
-				let port = "-1";
-				let addressid = address;
-
-				const match = addressid.match(regex);
-				if (!match) {
-					if (address.includes(':') && address.includes('#')) {
-						const parts = address.split(':');
-						address = parts[0];
-						const subParts = parts[1].split('#');
-						port = subParts[0];
-						addressid = subParts[1];
-					} else if (address.includes(':')) {
-						const parts = address.split(':');
-						address = parts[0];
-						port = parts[1];
-					} else if (address.includes('#')) {
-						const parts = address.split('#');
-						address = parts[0];
-						addressid = parts[1];
-					}
-
-					if (addressid.includes(':')) {
-						addressid = addressid.split(':')[0];
-					}
-				} else {
-					address = match[1];
-					port = match[2] || port;
-					addressid = match[3] || address;
-				}
-
-				if (!isValidIPv4(address) && port == "-1") {
-					for (let httpsPort of httpsPorts) {
-						if (address.includes(httpsPort)) {
-							port = httpsPort;
-							break;
-						}
-					}
-				}
-				if (port == "-1") port = "443";
-
-				//console.log(address, port, addressid);
+			const responseBody = uniqueAddresses.map(addressStr => {
+				const parsed = parseAddress(addressStr, httpsPorts, "443");
+				let address = parsed.address;
+				let port = parsed.port;
+				let addressid = parsed.addressid;
 
 				if (隧道版本作者.trim() === atob('Y21saXU=') && 获取代理IP.trim() === 'true') {
-					// 将addressid转换为小写
-					let lowerAddressid = addressid.toLowerCase();
-					// 初始化找到的proxyIP为null
-					let foundProxyIP = null;
-
-					if (socks5Data) {
-						const socks5 = getRandomProxyByMatch(lowerAddressid, socks5Data);
-						path = `/${socks5}`;
-					} else {
-						// 遍历匹配PROXYIP数组查找匹配项
-						for (let item of 匹配PROXYIP) {
-							if (item.includes('#') && item.split('#')[1] && lowerAddressid.includes(item.split('#')[1].toLowerCase())) {
-								foundProxyIP = item.split('#')[0];
-								break; // 找到匹配项，跳出循环
-							} else if (item.includes(':') && item.split(':')[1] && lowerAddressid.includes(item.split(':')[1].toLowerCase())) {
-								foundProxyIP = item.split(':')[0];
-								break; // 找到匹配项，跳出循环
-							}
-						}
-
-						const matchingProxyIP = proxyIPPool.find(proxyIP => proxyIP.includes(address));
-						if (matchingProxyIP) {
-							path = atob('L3Byb3h5aXA9') + matchingProxyIP;
-						} else if (foundProxyIP) {
-							// 如果找到匹配的proxyIP，赋值给path
-							path = atob('L3Byb3h5aXA9') + foundProxyIP;
-						} else {
-							// 如果没有找到匹配项，随机选择一个proxyIP
-							const randomProxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
-							path = atob('L3Byb3h5aXA9') + randomProxyIP;
-						}
-					}
+					path = resolveProxyIP(addressid, address, { socks5Data, 匹配PROXYIP, proxyIPs, proxyIPPool });
 				}
 
 				let 伪装域名 = host;
