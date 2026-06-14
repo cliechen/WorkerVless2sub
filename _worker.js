@@ -36,6 +36,27 @@ const regex = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[.*\]):?(\d+)?#?(.*)?$/;
 let fakeUserID;
 let fakeHostName;
 let httpsPorts = ["2053", "2083", "2087", "2096", "8443"];
+
+function escapeHtml(str) {
+	if (!str) return '';
+	return String(str)
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#039;');
+}
+
+function sanitizeUrl(url) {
+	if (!url) return '';
+	try {
+		const parsed = new URL(url);
+		if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+		return parsed.href;
+	} catch {
+		return '';
+	}
+}
 let 有效时间 = 7;
 let 更新时间 = 3;
 let MamaJustKilledAMan = ['telegram', 'twitter', 'miaoko'];
@@ -225,7 +246,8 @@ async function sendMessage(type, ip, add_data = "") {
 
 	try {
 		let msg = "";
-		const response = await fetch(`http://ip-api.com/json/${ip}?lang=zh-CN`);
+		const safeIp = encodeURIComponent(ip);
+		const response = await fetch(`https://ip-api.com/json/${safeIp}?lang=zh-CN`);
 		if (response.ok) {
 			const ipInfo = await response.json();
 			msg = `${type}\nIP: ${ip}\n国家: ${ipInfo.country}\n<tg-spoiler>城市: ${ipInfo.city}\n组织: ${ipInfo.org}\nASN: ${ipInfo.as}\n${add_data}`;
@@ -432,7 +454,7 @@ async function getLink(重新汇总所有链接) {
 				};
 			});
 
-			console.log(modifiedResponses); // 输出修改后的响应数组
+			// Removed: do not log response data
 
 			for (const response of modifiedResponses) {
 				// 检查响应状态是否为'fulfilled'
@@ -472,7 +494,7 @@ async function subHtml(request) {
 			<head>
 				<meta charset="UTF-8">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
-				<title>${FileName}</title>
+				<title>${escapeHtml(FileName)}</title>
 				${网站图标}
 				<style>
 					:root {
@@ -778,7 +800,7 @@ async function subHtml(request) {
 				<div class="container">
 						<div class="logo-title">
 							${网站头像}
-							<h1>${FileName}</h1>
+							<h1>${escapeHtml(FileName)}</h1>
 						</div>
 					<div class="input-group">
 						<label for="link">节点链接</label>
@@ -936,13 +958,14 @@ export default {
 		if (env.CMPROXYIPS) 匹配PROXYIP = await 整理(env.CMPROXYIPS);;
 		if (env.CFPORTS) httpsPorts = await 整理(env.CFPORTS);
 		EndPS = env.PS || EndPS;
-		网站图标 = env.ICO ? `<link rel="icon" sizes="32x32" href="${env.ICO}">` : '';
-		网站头像 = env.PNG ? `<div class="logo-wrapper"><div class="logo-border"></div><img src="${env.PNG}" alt="Logo"></div>` : '';
+		网站图标 = env.ICO ? `<link rel="icon" sizes="32x32" href="${sanitizeUrl(env.ICO)}">` : '';
+		网站头像 = env.PNG ? `<div class="logo-wrapper"><div class="logo-border"></div><img src="${sanitizeUrl(env.PNG)}" alt="Logo"></div>` : '';
 		if (env.IMG) {
 			const imgs = await 整理(env.IMG);
-			网站背景 = `background-image: url('${imgs[Math.floor(Math.random() * imgs.length)]}');`;
+			const safeImg = sanitizeUrl(imgs[Math.floor(Math.random() * imgs.length)]);
+			网站背景 = safeImg ? `background-image: url('${safeImg}');` : '';
 		} else 网站背景 = '';
-		网络备案 = env.BEIAN || env.BY || 网络备案;
+		网络备案 = escapeHtml(env.BEIAN || env.BY) || 网络备案;
 		const userAgentHeader = request.headers.get('User-Agent');
 		const userAgent = userAgentHeader ? userAgentHeader.toLowerCase() : "null";
 		const url = new URL(request.url);
@@ -1063,7 +1086,9 @@ export default {
 			uuid = url.searchParams.get('uuid') || url.searchParams.get('password') || url.searchParams.get('pw');
 			path = url.searchParams.get('path');
 			sni = url.searchParams.get('sni') || host;
-			type = url.searchParams.get('type') || type;
+			const allowedTypes = ['ws', 'splithttp', 'grpc', 'httpupgrade', 'none'];
+			const requestedType = url.searchParams.get('type');
+			type = (requestedType && allowedTypes.includes(requestedType)) ? requestedType : type;
 			scv = url.searchParams.get('allowInsecure') == '1' ? 'true' : (url.searchParams.get('scv') || scv);
 			const mode = url.searchParams.get('mode') || null;
 			const extra = url.searchParams.get('extra') || null;
@@ -1154,8 +1179,10 @@ export default {
 						},
 					});
 				}
-				const URL = URLs[Math.floor(Math.random() * URLs.length)];
-				return envKey === 'URL302' ? Response.redirect(URL, 302) : fetch(new Request(URL, request));
+				const redirectTarget = URLs[Math.floor(Math.random() * URLs.length)];
+				const safeRedirect = sanitizeUrl(redirectTarget);
+				if (!safeRedirect) return await subHtml(request);
+				return envKey === 'URL302' ? Response.redirect(safeRedirect, 302) : fetch(new Request(safeRedirect, request));
 			}
 			return await subHtml(request);
 		} else if ((userAgent.includes('clash') || userAgent.includes('meta') || userAgent.includes('mihomo') || (format === 'clash' && !isSubConverterRequest)) && !userAgent.includes('nekobox') && !userAgent.includes('cf-workers-sub')) {
@@ -1397,12 +1424,12 @@ export default {
 				const links = await 整理(link);
 				const 整理节点LINK = (await getLink(links)).join('\n');
 				combinedContent += '\n' + 整理节点LINK;
-				console.log("link: " + 整理节点LINK)
+				// Removed: do not log subscription content
 			}
 
 			if (notlsresponseBody && noTLS == 'true') {
 				combinedContent += '\n' + notlsresponseBody;
-				console.log("notlsresponseBody: " + notlsresponseBody);
+				// Removed: do not log subscription content
 			}
 
 			if (协议类型 == atob('VHJvamFu') && (userAgent.includes('surge') || (format === 'surge' && !isSubConverterRequest)) && !userAgent.includes('cf-workers-sub')) {
