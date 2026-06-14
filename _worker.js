@@ -68,7 +68,7 @@ async function 整理优选列表(api) {
 				'User-Agent': FileName + atob('IChodHRwczovL2dpdGh1Yi5jb20vY21saXUvV29ya2VyVmxlc3Myc3ViKQ==')
 			},
 			signal: controller.signal // 将AbortController的信号量添加到fetch请求中，以便于需要时可以取消请求
-		}).then(response => response.ok ? response.text() : Promise.reject())));
+		}).then(response => response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status} from ${apiUrl}`)))));
 
 		// 遍历所有响应
 		for (const [index, response] of responses.entries()) {
@@ -118,7 +118,11 @@ async function 整理优选列表(api) {
 			}
 		}
 	} catch (error) {
-		console.error(error);
+		if (error.name === 'AbortError') {
+			console.warn('整理优选列表: requests timed out after 2s');
+		} else {
+			console.error('整理优选列表: unexpected error:', error.message || error);
+		}
 	} finally {
 		// 无论成功或失败，最后都清除设置的超时定时器
 		clearTimeout(timeout);
@@ -243,7 +247,7 @@ async function sendMessage(type, ip, add_data = "") {
 			}
 		});
 	} catch (error) {
-		console.error('Error sending message:', error);
+		console.error('sendMessage: failed to send Telegram notification:', error.message || error);
 	}
 }
 
@@ -420,7 +424,7 @@ async function getLink(重新汇总所有链接) {
 					'User-Agent': 'v2rayN/' + FileName + ' (https://github.com/cmliu/WorkerVless2sub)'
 				},
 				signal: controller.signal // 将AbortController的信号量添加到fetch请求中
-			}).then(response => response.ok ? response.text() : Promise.reject())));
+			}).then(response => response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status} from ${apiUrl}`)))));
 
 			// 遍历所有响应
 			const modifiedResponses = responses.map((response, index) => {
@@ -451,7 +455,11 @@ async function getLink(重新汇总所有链接) {
 				}
 			}
 		} catch (error) {
-			console.error(error); // 捕获并输出错误信息
+			if (error.name === 'AbortError') {
+				console.warn('getLink: subscription fetch timed out after 2s');
+			} else {
+				console.error('getLink: failed to fetch subscription links:', error.message || error);
+			}
 		} finally {
 			clearTimeout(timeout); // 清除定时器
 		}
@@ -996,7 +1004,8 @@ export default {
 				} else {
 					socks5Data = socks5DataText.split('\n').filter(line => line.trim() !== '');
 				}
-			} catch {
+			} catch (error) {
+				console.error('Failed to fetch socks5 data from', socks5DataURL, ':', error.message || error);
 				socks5Data = null;
 			}
 		}
@@ -1006,13 +1015,19 @@ export default {
 		if (env.PROXYIPAPI) {
 			const proxyIPsapi = await 整理(env.PROXYIPAPI);
 			if (proxyIPsapi.length > 0) {
-				const response = await fetch(proxyIPsapi[0]);
-				if (response.ok) {
-					const 响应内容 = await response.text();
-					const 整理成数组 = await 整理(响应内容);
-					if (整理成数组.length > 0) {
-						临时proxyIPs = 临时proxyIPs.concat(整理成数组);	//追加到proxyIPs数组中
+				try {
+					const response = await fetch(proxyIPsapi[0]);
+					if (response.ok) {
+						const 响应内容 = await response.text();
+						const 整理成数组 = await 整理(响应内容);
+						if (整理成数组.length > 0) {
+							临时proxyIPs = 临时proxyIPs.concat(整理成数组);	//追加到proxyIPs数组中
+						}
+					} else {
+						console.error('PROXYIPAPI fetch failed:', response.status, response.statusText);
 					}
+				} catch (error) {
+					console.error('PROXYIPAPI fetch error:', error.message || error);
 				}
 			}
 		}
@@ -1176,18 +1191,16 @@ export default {
 						const response = await fetch(临时中转域名接口);
 
 						if (!response.ok) {
-							console.error('获取地址时出错:', response.status, response.statusText);
-							return; // 如果有错误，直接返回
+							console.error('临时中转域名接口 fetch failed:', response.status, response.statusText);
+						} else {
+							const text = await response.text();
+							const lines = text.split('\n');
+							const nonEmptyLines = lines.filter(line => line.trim() !== '');
+
+							临时中转域名 = 临时中转域名.concat(nonEmptyLines);
 						}
-
-						const text = await response.text();
-						const lines = text.split('\n');
-						// 过滤掉空行或只包含空白字符的行
-						const nonEmptyLines = lines.filter(line => line.trim() !== '');
-
-						临时中转域名 = 临时中转域名.concat(nonEmptyLines);
 					} catch (error) {
-						console.error('获取地址时出错:', error);
+						console.error('临时中转域名接口 fetch error:', error.message || error);
 					}
 				}
 				// 使用Set对象去重
@@ -1414,6 +1427,7 @@ export default {
 				try {
 					base64Response = btoa(combinedContent); // 重新进行 Base64 编码
 				} catch (e) {
+					console.warn('btoa failed, using fallback base64 encoder:', e.message || e);
 					function encodeBase64(data) {
 						const binary = new TextEncoder().encode(data);
 						let base64 = '';
